@@ -1,82 +1,67 @@
-# IoT H4 — Opgave 3: Pointere og bit-operationer
+# Opgave 3 — Pointere og bit-operationer (ATmega328PB)
 
-Program til **ATmega328PB Xplained Mini**, der via UART (Serial Monitor) lader dig pege på en registeradresse, vælge én bit (0–7) og sætte den til 0 eller 1 — uden at røre de andre bits.
+Det her er min løsning til Embedded Opgave 3.
 
-## Opgaven kort
+Idéen er, at man fra PC’en kan sende en registeradresse, vælge hvilken bit man vil pille ved, og så sætte den bit til 0 eller 1. Programmet må kun ændre den ene bit — resten af registret skal være urørt.
 
-Fra PC’en sender du tre ting i rækkefølge:
+Jeg bruger Serial Monitor til at snakke med boardet (9600 baud), ikke Hercules.
 
-1. En **hex-adresse** afsluttet med `:` (fx `0025:` eller `0x0025:`)
-2. En **bit-position** `0`–`7`
-3. En **bit-værdi** `0` eller `1`
+## Hvad programmet forventer
 
-Programmet bruger en **pointer** til adressen og ændrer kun den valgte bit. Derefter printer det fire statuslinjer på UART.
+Man sender tre ting i rækkefølge:
 
-## Sådan virker løsningen
+1. Hex-adresse + `:` — fx `0025:` eller `0x0025:`
+2. Bit-position — et tal mellem `0` og `7`
+3. Bit-værdi — `0` eller `1`
 
-### 1) Tilstandsmaskine (enum)
+Når det er gjort, skriver programmet fire linjer tilbage med adresse, bit-position, bit-værdi og hele bitmønsteret på adressen.
 
-Programmet er altid i præcis én tilstand:
+## Hvordan jeg har lavet det
 
-| Tilstand | Hvad forventes |
-|----------|----------------|
-| `Modtag_Adresse` | Hex-cifre + `:` |
-| `Modtag_Bit_Position_I_Adresse` | Ét ciffer `0`–`7` |
-| `Modtag_Bit_Positon_Vaerdi` | `0` eller `1` |
+### Tilstandsmaskine
 
-Tilstandene styres med en `enum` i `main.c`. Ved **hvert** skift skrives tilstandsnavnet på UART, så du i Serial Monitor kan se, hvad du skal taste næste gang.
+Programmet kører som en state machine med tre tilstande (lavet med en `enum`):
 
-Ugyldigt input i trin 2 eller 3 sender programmet tilbage til `Modtag_Adresse` **uden** at ændre registret.
+- `Modtag_Adresse`
+- `Modtag_Bit_Position_I_Adresse`
+- `Modtag_Bit_Positon_Vaerdi` (stavet som i opgaven)
 
-### 2) UART med interrupt + buffer
+Den starter i `Modtag_Adresse`. Hver gang tilstanden skifter, printer jeg navnet ud, så man i Serial Monitor kan se, hvad man skal taste næste gang.
 
-- USART0 kører **9600 baud, 8N1** (samme som board-USB / mEDBG).
-- **RX-interrupt** lægger hvert tegn i en lille ringbuffer (kort ISR).
-- **main-loop** henter tegn fra bufferen og kører tilstandsmaskinen.
-- Al `printf` sker i main — ikke inde i interrupt.
+Hvis man sender noget ugyldigt i trin 2 eller 3, hopper den bare tilbage til `Modtag_Adresse` uden at ændre noget i registret.
 
-Det betyder: tegnene går ikke tabt, mens vi printer, og interrupt-koden forbliver kort.
+### UART
 
-### 3) Pointer til registeradressen
+Jeg bruger USART0 via boardets USB. Tegnene kommer ind i et RX-interrupt, som lægger dem i en lille buffer. Selve logikken kører i `main`, hvor jeg også printer med `printf`. På den måde holder interrupt’et kort, og jeg undgår at skrive langsomt UART-output inde i ISR’en.
 
-Når adressen er parse’t (fx `0x0025` = PORTB), sættes:
+### Pointer
+
+Når adressen er parse’t, sætter jeg en pointer til den:
 
 ```c
 register_pointer = (volatile uint8_t *)received_address;
 ```
 
-Derefter betyder `*register_pointer` “værdien i det register”. Det er den centrale pointe i opgaven: vi skriver ikke `PORTB = ...` hardkodet — vi går via den adresse, PC’en sendte.
+Så kan jeg læse og skrive registret gennem pointeren i stedet for at hardcode fx `PORTB`. Det er hele pointen med den del af opgaven.
 
-### 4) Bit-operationer (kun én bit)
+### Bit-operationer
 
 ```c
 if (bit_value == 1)
-    *register_pointer |=  (1 << bit_position);   /* sæt bit høj  */
+    *register_pointer |=  (1 << bit_position);
 else
-    *register_pointer &= ~(1 << bit_position);   /* clear bit    */
+    *register_pointer &= ~(1 << bit_position);
 ```
 
-- `|=` sætter valgte bit til 1, resten uændret
-- `&= ~` sætter valgte bit til 0, resten uændret
+`|=` sætter bit’en høj. `&= ~` clearer den. De andre bits bliver som de er.
 
-**Bemærk:** I opgavens pseudokode er 0/1 byttet om. Vi følger **teksten** i opgaven: `1` = høj, `0` = lav.
+Lige en note: i opgavens pseudokode er 0 og 1 byttet om. Jeg følger teksten i opgaven i stedet — `1` betyder høj, `0` betyder lav.
 
-### 5) Statusprint efter succes
+## Sådan kan man teste det (LED på PB5)
 
-```text
-Adresse: 0x0025
-Bit position: 5
-Bit vaerdi: 1
-Bit moenster: 0010 0000
-```
+Boardets LED sidder på PORTB bit 5. Først skal pinnen sættes som output via DDRB (`0x0024`), og derefter kan man tænde/slukke via PORTB (`0x0025`).
 
-Bitmønsteret er hele byten på adressen efter ændringen (mellemrum mellem de to nibbles).
-
-## Eksempel: tænd board-LED (PB5)
-
-Boardets LED sidder typisk på **PORTB bit 5**.
-
-Først gør pinnen til output (DDRB = `0x0024`):
+Sæt DDRB bit 5:
 
 ```text
 0024:
@@ -84,7 +69,7 @@ Først gør pinnen til output (DDRB = `0x0024`):
 1
 ```
 
-Derefter sæt port-bitten (PORTB = `0x0025`):
+Tænd LED:
 
 ```text
 0025:
@@ -92,7 +77,7 @@ Derefter sæt port-bitten (PORTB = `0x0025`):
 1
 ```
 
-Sluk igen:
+Sluk LED:
 
 ```text
 0025:
@@ -100,38 +85,20 @@ Sluk igen:
 0
 ```
 
-Adresserne kommer fra ATmega328PB-databladet (I/O memory map).
+Adresserne har jeg fundet i ATmega328PB-databladet.
 
-## Test med Serial Monitor
+## Serial Monitor
 
-Vi har brugt **Serial Monitor** (VS Code / MPLAB) i stedet for Hercules.
-
-1. Flash programmet til Xplained Mini.
-2. Åbn Serial Monitor på boardets COM-port → **9600**, 8N1.
-3. Du skal se starttekst + `Tilstand: Modtag_Adresse`.
-4. Send kommandoerne ovenfor (ét tegn ad gangen eller hele adressen med `:`).
-5. Tjek at tilstandsbeskeder og de fire statuslinjer stemmer.
-6. Prøv bevidst ugyldigt input (fx bit `9` eller værdi `2`) og se at I lander tilbage i `Modtag_Adresse` uden ændring.
+1. Flash til Xplained Mini
+2. Åbn Serial Monitor på boardets COM-port, 9600 8N1
+3. Der skulle gerne stå starttekst + `Tilstand: Modtag_Adresse`
+4. Send kommandoerne som ovenfor
+5. Tjek at tilstandsbeskederne og de fire statuslinjer kommer som forventet
 
 ## Filer
 
-| Fil | Indhold |
-|-----|---------|
-| `src/main.c` | Enum, tilstandsmaskine, hex-parse, pointer, bit-ops, print |
-| `src/Uart.c` | USART0 init, RX-interrupt + ringbuffer, `printf` |
-| `include/Uart.h` | UART API |
-| `include/ProjectDefines.h` | `F_CPU`, AVR-includes |
+- `src/main.c` — state machine, parse af adresse, pointer og bit-skrivning
+- `src/Uart.c` / `include/Uart.h` — UART init, interrupt og buffer
+- `include/ProjectDefines.h` — `F_CPU` og includes
 
-## Byg / flash
-
-Projektet er lavet til **VS Code + MPLAB / XC8** på ATmega328PB (samme toolchain som de øvrige H4 IoT-øvelser). Tilføj `src/main.c` og `src/Uart.c` i dit MPLAB/VS Code-projekt, build, og flash via board-USB.
-
-## Kort “mundtlig” forklaring
-
-Hvis du skal forklare løsningen højt:
-
-1. Vi har en **state machine** med tre trin styret af en enum.
-2. Tegn kommer ind via **UART-interrupt** til en buffer; main behandler dem.
-3. Adressen bliver til en **pointer**, så vi kan skrive direkte i registret.
-4. Med `|=` / `&= ~` ændrer vi **kun én bit**.
-5. UART fortæller hele tiden hvilken tilstand vi er i, og printer resultatet bagefter.
+Bygget med VS Code + MPLAB / XC8 til ATmega328PB.
