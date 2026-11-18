@@ -1,6 +1,6 @@
 # IoT H4 — Opgave 3: Pointere og bit-operationer
 
-Program til **ATmega328PB Xplained Mini**, der via UART (Hercules) lader dig pege på en registeradresse, vælge én bit (0–7) og sætte den til 0 eller 1 — uden at røre de andre bits.
+Program til **ATmega328PB Xplained Mini**, der via UART (Serial Monitor) lader dig pege på en registeradresse, vælge én bit (0–7) og sætte den til 0 eller 1 — uden at røre de andre bits.
 
 ## Opgaven kort
 
@@ -24,7 +24,7 @@ Programmet er altid i præcis én tilstand:
 | `Modtag_Bit_Position_I_Adresse` | Ét ciffer `0`–`7` |
 | `Modtag_Bit_Positon_Vaerdi` | `0` eller `1` |
 
-Tilstandene styres med en `enum` i `main.c`. Ved **hvert** skift skrives tilstandsnavnet på UART, så du i Hercules kan se, hvad du skal taste næste gang.
+Tilstandene styres med en `enum` i `main.c`. Ved **hvert** skift skrives tilstandsnavnet på UART, så du i Serial Monitor kan se, hvad du skal taste næste gang.
 
 Ugyldigt input i trin 2 eller 3 sender programmet tilbage til `Modtag_Adresse` **uden** at ændre registret.
 
@@ -102,10 +102,12 @@ Sluk igen:
 
 Adresserne kommer fra ATmega328PB-databladet (I/O memory map).
 
-## Test med Hercules
+## Test med Serial Monitor
+
+Vi har brugt **Serial Monitor** (VS Code / MPLAB) i stedet for Hercules.
 
 1. Flash programmet til Xplained Mini.
-2. Åbn Hercules Serial → boardets COM-port → **9600**, 8N1.
+2. Åbn Serial Monitor på boardets COM-port → **9600**, 8N1.
 3. Du skal se starttekst + `Tilstand: Modtag_Adresse`.
 4. Send kommandoerne ovenfor (ét tegn ad gangen eller hele adressen med `:`).
 5. Tjek at tilstandsbeskeder og de fire statuslinjer stemmer.
